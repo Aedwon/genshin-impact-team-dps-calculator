@@ -3,6 +3,7 @@ import type { EnergySkillConfig, UnitEnergyConfig } from '../energyTypes';
 import type { UnitEnergyPlanResult } from '../lib/energyModel';
 import { getDefaultEnergyVariant } from '../lib/energyVariants';
 import type { Unit } from '../types';
+import { CharacterAvatar, getCharacterVisualInfo } from './CharacterAvatar';
 
 interface Props {
   unit: Unit;
@@ -12,6 +13,8 @@ interface Props {
   onChange: (patch: Partial<UnitEnergyConfig>) => void;
   onReset: () => void;
 }
+
+type ResultTone = 'ok' | 'warn' | 'bad' | 'neutral';
 
 function pct(value: number): number {
   return Math.round(value * 1000) / 10;
@@ -23,6 +26,21 @@ function n(value: string): number {
 
 function characterName(unit: Unit): string {
   return unit.characterName ?? unit.id.slice(0, 4);
+}
+
+function resultTone(result: UnitEnergyPlanResult | undefined): ResultTone {
+  if (!result || result.requiredER == null) return 'neutral';
+  if (result.reservation.erShortfall > 0 || !result.ready) return 'bad';
+  if (result.reservation.budgetConflictRolls > 0) return 'warn';
+  return 'ok';
+}
+
+function resultSummary(result: UnitEnergyPlanResult | undefined): string {
+  if (!result) return 'Waiting for energy data';
+  if (result.requiredER == null) return 'No particle energy reaches this character';
+  if (result.reservation.erShortfall > 0) return `${result.reservation.erShortfall.toFixed(1)}% ER beyond artifact cap`;
+  if (result.reservation.budgetConflictRolls > 0) return `Free ${result.reservation.budgetConflictRolls} non-ER roll(s)`;
+  return result.ready ? 'Burst ready' : `${result.energyShortfall.toFixed(1)} Energy short`;
 }
 
 function SkillInputs({
@@ -149,18 +167,12 @@ function OverrideFields({ label, skill, onChange }: { label: string; skill: Ener
   );
 }
 
-function resultSummary(result: UnitEnergyPlanResult | undefined): string {
-  if (!result) return '';
-  if (result.requiredER == null) return 'No particle energy reaches this character';
-  if (result.reservation.erShortfall > 0) return `${result.reservation.erShortfall.toFixed(1)}% ER beyond artifact cap`;
-  if (result.reservation.budgetConflictRolls > 0) return `Free ${result.reservation.budgetConflictRolls} non-ER roll(s)`;
-  return result.ready ? 'Burst ready' : `${result.energyShortfall.toFixed(1)} Energy short`;
-}
-
 export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, onReset }: Props) {
   const data = getCharacterEnergyData(unit.characterName);
   const variants = getEligibleEnergyVariants(data, unit.constellation);
   const fallback = getDefaultEnergyVariant(data, unit.constellation)?.label ?? '';
+  const visual = getCharacterVisualInfo(unit);
+  const tone = resultTone(result);
   const secondaryActive = cfg.secondary.usesPerRotation > 0;
   const funnelActive = Boolean(
     (cfg.primary.funnelTargetUnitId && cfg.primary.funnelFraction > 0)
@@ -168,31 +180,96 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
   );
   const favoniusActive = cfg.favoniusTriggersPerRotation > 0;
 
+  const erProgress = result?.requiredER
+    ? Math.max(0, Math.min(100, result.attainedStaticER / result.requiredER * 100))
+    : 0;
+  const burstProgress = result && result.effectiveBurstCost > 0
+    ? Math.max(0, Math.min(100, result.energyReceived / result.effectiveBurstCost * 100))
+    : 100;
+  const scaledEnergy = result ? result.erScaledEnergyAt100ER * result.effectiveERForEnergy / 100 : 0;
+  const totalIncoming = result ? scaledEnergy + result.flatEnergyPerBurst : 0;
+  const particleShare = totalIncoming > 0 ? Math.max(0, Math.min(100, scaledEnergy / totalIncoming * 100)) : 0;
+  const flatShare = totalIncoming > 0 ? Math.max(0, 100 - particleShare) : 0;
+
   return (
-    <article className="energy-unit">
-      <header className="energy-unit-header">
-        <div>
-          <h4>{unit.characterName ?? 'Unassigned unit'}</h4>
-          {result && (
-            <p className="energy-unit-result">
-              <strong>{result.requiredER == null ? '—' : `${result.requiredER.toFixed(1)}% ER required`}</strong>
+    <article className="energy-unit energy-character-card" data-element={visual.element.toLowerCase()} data-status={tone}>
+      <div className="energy-card-accent" />
+      <header className="energy-card-header">
+        <div className="energy-card-identity">
+          <CharacterAvatar unit={unit} size="lg" />
+          <div>
+            <div className="energy-card-name-row">
+              <h4>{unit.characterName ?? 'Unassigned unit'}</h4>
+              <span className="energy-element-label">{visual.element}</span>
+            </div>
+            <p className="energy-card-meta">
+              <span>C{unit.constellation}</span>
               <span>·</span>
-              <span>{resultSummary(result)}</span>
+              <span>{unit.weaponName ?? 'No weapon selected'}</span>
+              <span>·</span>
+              <span>{unit.burstEnergyCost} Burst cost</span>
             </p>
-          )}
+          </div>
         </div>
-        <button type="button" className="text-button" onClick={onReset}>Reset</button>
+
+        <div className="energy-card-target">
+          <span className={`energy-status-chip energy-status-chip--${tone === 'neutral' ? 'warn' : tone}`}>{resultSummary(result)}</span>
+          <div className="energy-card-target-number">
+            <small>Required ER</small>
+            <strong>{result?.requiredER == null ? '—' : `${result.requiredER.toFixed(1)}%`}</strong>
+          </div>
+          <button type="button" className="text-button" onClick={onReset}>Reset setup</button>
+        </div>
       </header>
 
+      {result && (
+        <div className="energy-card-summary">
+          <div className="energy-summary-stat">
+            <span>Build ER</span>
+            <strong>{result.attainedStaticER.toFixed(1)}%</strong>
+            <small>{result.reservation.reservedRolls} ER roll{result.reservation.reservedRolls === 1 ? '' : 's'} reserved</small>
+          </div>
+          <div className="energy-summary-stat">
+            <span>Energy for Burst</span>
+            <strong>{result.energyReceived.toFixed(1)} / {result.effectiveBurstCost.toFixed(0)}</strong>
+            <small>{result.burstIntervalSeconds.toFixed(0)}s between Bursts</small>
+          </div>
+          <div className="energy-summary-visuals">
+            <div className="energy-meter-row">
+              <div className="energy-meter-label"><span>ER target</span><span>{Math.round(erProgress)}%</span></div>
+              <div className="energy-target-track"><span className={`energy-target-fill energy-target-fill--${tone === 'neutral' ? 'warn' : tone}`} style={{ width: `${erProgress}%` }} /></div>
+            </div>
+            <div className="energy-meter-row">
+              <div className="energy-meter-label"><span>Burst energy</span><span>{Math.round(burstProgress)}%</span></div>
+              <div className="energy-target-track"><span className={`energy-target-fill energy-target-fill--${result.ready ? 'ok' : 'bad'}`} style={{ width: `${burstProgress}%` }} /></div>
+            </div>
+          </div>
+          <div className="energy-source-visual">
+            <div className="energy-meter-label"><span>Incoming energy mix</span><span>{totalIncoming.toFixed(1)}</span></div>
+            <div className="energy-source-track" aria-hidden="true">
+              <span className="energy-source-particles" style={{ width: `${particleShare}%` }} />
+              <span className="energy-source-flat" style={{ width: `${flatShare}%` }} />
+            </div>
+            <div className="energy-source-legend">
+              <span><i className="energy-source-dot energy-source-dot--particles" />Particles · {scaledEnergy.toFixed(1)}</span>
+              <span><i className="energy-source-dot energy-source-dot--flat" />Flat refunds · {result.flatEnergyPerBurst.toFixed(1)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="energy-unit-body">
-        <div className="energy-core-settings">
+        <section className="energy-core-settings">
           <div className="energy-core-copy">
-            <strong>Rotation</strong>
-            <span>Set the skill uses, field time, and Burst cadence that actually happen in your rotation.</span>
+            <span className="energy-step-number">01</span>
+            <div>
+              <strong>Rotation inputs</strong>
+              <span>Set what this character actually does. Start here before touching advanced mechanics.</span>
+            </div>
           </div>
           <div className="energy-core-controls">
             <SkillInputs
-              label="Skill"
+              label="Primary"
               skill={cfg.primary}
               variants={variants}
               fallbackLabel={fallback}
@@ -229,12 +306,17 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
               </div>
             </div>
           </div>
+        </section>
+
+        <div className="energy-card-options-label">
+          <span className="energy-step-number">02</span>
+          <div><strong>Optional mechanics</strong><span>Open only the mechanics your team actually uses.</span></div>
         </div>
 
         <details className="energy-inline-disclosure">
           <summary>Secondary particle source <span>{secondaryActive ? `${cfg.secondary.usesPerRotation} use(s)` : 'Off'}</span></summary>
           <div className="energy-inline-disclosure-body">
-            <p className="subtle">Use this only when the character generates particles from a second skill version or additional action.</p>
+            <p className="subtle">Use this when the character has a second particle-generating skill version or additional action in the rotation.</p>
             <SkillInputs
               label="Secondary"
               skill={cfg.secondary}
@@ -249,22 +331,10 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
         <details className="energy-inline-disclosure">
           <summary>Particle funneling <span>{funnelActive ? 'Customized' : 'Natural catches'}</span></summary>
           <div className="energy-inline-disclosure-body">
-            <p className="subtle">Only change this when you deliberately swap characters so someone else catches the generated particles.</p>
-            <FunnelInputs
-              label="Primary skill"
-              skill={cfg.primary}
-              units={units}
-              unitId={unit.id}
-              onChange={(primary) => onChange({ primary })}
-            />
+            <p className="subtle">Change this only when you deliberately swap characters so someone else catches generated particles.</p>
+            <FunnelInputs label="Primary skill" skill={cfg.primary} units={units} unitId={unit.id} onChange={(primary) => onChange({ primary })} />
             {secondaryActive && (
-              <FunnelInputs
-                label="Secondary source"
-                skill={cfg.secondary}
-                units={units}
-                unitId={unit.id}
-                onChange={(secondary) => onChange({ secondary })}
-              />
+              <FunnelInputs label="Secondary source" skill={cfg.secondary} units={units} unitId={unit.id} onChange={(secondary) => onChange({ secondary })} />
             )}
           </div>
         </details>
@@ -306,8 +376,8 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
         </details>
 
         {result && (
-          <details className="energy-inline-disclosure">
-            <summary>Why this ER requirement? <span>{result.erScaledEnergyAt100ER.toFixed(1)} Energy before ER scaling</span></summary>
+          <details className="energy-inline-disclosure energy-explain-disclosure">
+            <summary>Why this ER requirement? <span>{result.erScaledEnergyAt100ER.toFixed(1)} Energy at 100% ER</span></summary>
             <div className="energy-inline-disclosure-body">
               <div className="energy-explanation-grid">
                 <div>
