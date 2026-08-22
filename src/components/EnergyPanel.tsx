@@ -3,8 +3,10 @@ import { ENERGY_DATA_VERSION } from '../data/energyData';
 import { createDefaultUnitEnergyConfig, ENERGY_ELEMENTS } from '../energyTypes';
 import { buildAutoReservedArtifacts, computeTeamEnergyPlan, type UnitEnergyPlanResult } from '../lib/energyModel';
 import { useStore } from '../store';
+import { CharacterAvatar, getCharacterVisualInfo } from './CharacterAvatar';
 import { EnergyUnitSetup } from './EnergyUnitSetup';
 import { ManualEnergySources } from './ManualEnergySources';
+import './energy.css';
 
 function fmt(n: number, digits = 1): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
@@ -16,6 +18,11 @@ function resultStatus(result: UnitEnergyPlanResult): { label: string; tone: 'ok'
   if (result.reservation.budgetConflictRolls > 0) return { label: `Free ${result.reservation.budgetConflictRolls} artifact roll(s)`, tone: 'warn' };
   if (!result.ready) return { label: `Energy short by ${fmt(result.energyShortfall)}`, tone: 'bad' };
   return { label: 'Burst ready', tone: 'ok' };
+}
+
+function targetProgress(result: UnitEnergyPlanResult): number {
+  if (result.requiredER == null || result.requiredER <= 0) return 0;
+  return Math.max(0, Math.min(100, result.attainedStaticER / result.requiredER * 100));
 }
 
 export function EnergyPanel() {
@@ -58,47 +65,61 @@ export function EnergyPanel() {
     <section className="panel energy-panel">
       <header className="energy-header">
         <div>
+          <p className="energy-eyebrow">Rotation resource planner</p>
           <h2 className="energy-title">Energy Recharge</h2>
           <p className="energy-intro">
-            Start with the team check below. Character defaults come from the reference sheet; only change a setting when your rotation differs.
+            Check the ER targets first, then adjust only the parts of the rotation that differ from the reference assumptions.
           </p>
         </div>
-        <span className="energy-data-version">data v{ENERGY_DATA_VERSION}</span>
+        <div className="energy-header-context">
+          <span>{fmt(rotationDuration, 0)}s rotation</span>
+          <span>{settings.rngMode} particles</span>
+          <span>data v{ENERGY_DATA_VERSION}</span>
+        </div>
       </header>
 
       <section className="energy-team-check" aria-labelledby="energy-team-check-title">
         <div className="energy-section-heading">
           <div>
-            <h3 id="energy-team-check-title">Team check</h3>
-            <p className="subtle">Required ER already includes the configured rotation, particles, refunds, and artifact reservation.</p>
+            <h3 id="energy-team-check-title">Team at a glance</h3>
+            <p className="subtle">The large number is the ER target. The bar compares the current attainable build against that target.</p>
           </div>
-          <span className="energy-rotation-note">{fmt(rotationDuration, 0)}s rotation · {settings.rngMode} particles</span>
         </div>
 
-        <div className="energy-result-list">
+        <div className="energy-overview-grid">
           {units.map((unit) => {
             const result = resultByUnit.get(unit.id);
             if (!result) return null;
             const status = resultStatus(result);
+            const visual = getCharacterVisualInfo(unit);
+            const progress = targetProgress(result);
             return (
-              <div className="energy-result-row" key={unit.id}>
-                <div className="energy-result-character">
-                  <strong>{unit.characterName ?? 'Unassigned unit'}</strong>
-                  <span className={`energy-status energy-status--${status.tone}`}>{status.label}</span>
-                </div>
-                <div className="energy-result-metric">
+              <article className="energy-overview-card" data-element={visual.element.toLowerCase()} key={unit.id}>
+                <div className="energy-overview-accent" />
+                <header className="energy-overview-identity">
+                  <CharacterAvatar unit={unit} size="md" />
+                  <div className="energy-overview-name">
+                    <strong>{unit.characterName ?? 'Unassigned unit'}</strong>
+                    <span>{visual.element}{visual.rarity ? ` · ${visual.rarity}★` : ''}</span>
+                  </div>
+                  <span className={`energy-status-chip energy-status-chip--${status.tone}`}>{status.label}</span>
+                </header>
+
+                <div className="energy-overview-target">
                   <span>Required ER</span>
                   <strong>{result.requiredER == null ? '—' : `${fmt(result.requiredER)}%`}</strong>
                 </div>
-                <div className="energy-result-metric">
-                  <span>Build ER</span>
-                  <strong>{fmt(result.attainedStaticER)}%</strong>
+
+                <div className="energy-target-track" aria-hidden="true">
+                  <span className={`energy-target-fill energy-target-fill--${status.tone}`} style={{ width: `${progress}%` }} />
                 </div>
-                <div className="energy-result-metric">
-                  <span>Reserved ER rolls</span>
-                  <strong>{settings.autoReserveERRolls ? result.reservation.reservedRolls : 'manual'}</strong>
+
+                <div className="energy-overview-meta">
+                  <span><small>Build ER</small><strong>{fmt(result.attainedStaticER)}%</strong></span>
+                  <span><small>ER rolls</small><strong>{settings.autoReserveERRolls ? result.reservation.reservedRolls : 'Manual'}</strong></span>
+                  <span><small>Burst</small><strong>{fmt(result.energyReceived)} / {fmt(result.effectiveBurstCost, 0)}</strong></span>
                 </div>
-              </div>
+              </article>
             );
           })}
         </div>
@@ -108,7 +129,7 @@ export function EnergyPanel() {
         <div className="energy-section-heading">
           <div>
             <h3 id="energy-settings-title">Rotation assumptions</h3>
-            <p className="subtle">These two settings are the ones most users need to touch.</p>
+            <p className="subtle">These are the team-wide inputs most likely to change between calculations.</p>
           </div>
         </div>
         <div className="energy-settings-row">
@@ -131,7 +152,7 @@ export function EnergyPanel() {
             <input type="checkbox" checked={settings.autoReserveERRolls} onChange={(e) => setEnergySettings({ autoReserveERRolls: e.target.checked })} />
             <span>
               <strong>Reserve required ER rolls</strong>
-              <small>Leaves remaining artifact rolls unallocated.</small>
+              <small>Meet the ER target first; leave the rest unallocated.</small>
             </span>
           </label>
         </div>
@@ -196,8 +217,8 @@ export function EnergyPanel() {
       <section className="energy-character-section" aria-labelledby="energy-character-title">
         <div className="energy-section-heading">
           <div>
-            <h3 id="energy-character-title">Character setup</h3>
-            <p className="subtle">The default view shows rotation inputs. Funneling, Favonius, and manual mechanics stay tucked away until needed.</p>
+            <h3 id="energy-character-title">Character rotation</h3>
+            <p className="subtle">Each card starts with the result, then the few rotation inputs that drive it. Optional mechanics stay collapsed.</p>
           </div>
         </div>
         <div className="energy-unit-list">
