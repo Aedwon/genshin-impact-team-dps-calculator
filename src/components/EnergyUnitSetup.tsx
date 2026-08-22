@@ -1,6 +1,7 @@
-import { getCharacterEnergyData, getDefaultEnergyVariant, getEligibleEnergyVariants } from '../data/energyData';
+import { getCharacterEnergyData, getEligibleEnergyVariants } from '../data/energyData';
 import type { EnergySkillConfig, UnitEnergyConfig } from '../energyTypes';
 import type { UnitEnergyPlanResult } from '../lib/energyModel';
+import { getDefaultEnergyVariant } from '../lib/energyVariants';
 import type { Unit } from '../types';
 
 interface Props { unit: Unit; units: Unit[]; config: UnitEnergyConfig; result: UnitEnergyPlanResult | undefined; onChange: (patch: Partial<UnitEnergyConfig>) => void; onReset: () => void; }
