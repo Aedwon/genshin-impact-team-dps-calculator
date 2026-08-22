@@ -1,210 +1,54 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
+import { ENERGY_DATA_VERSION } from '../data/energyData';
+import { createDefaultUnitEnergyConfig, ENERGY_ELEMENTS } from '../energyTypes';
+import { buildAutoReservedArtifacts, computeTeamEnergyPlan } from '../lib/energyModel';
 import { useStore } from '../store';
-import { getOffFieldMultiplier } from '../constants';
-import { computeEnergyResults } from '../lib/energyCalc';
-import { PARTICLE_TIER_LABELS, type ParticleTier } from '../types';
+import { EnergyUnitSetup } from './EnergyUnitSetup';
+import { ManualEnergySources } from './ManualEnergySources';
 
-const TIERS: ParticleTier[] = ['particle', 'orb'];
-
-function fmt(n: number, digits = 1): string {
-  return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits });
-}
+function fmt(n: number, digits = 1): string { return n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits }); }
 
 export function EnergyPanel() {
-  const units = useStore((s) => s.units);
-  const buffs = useStore((s) => s.buffs);
-  const batches = useStore((s) => s.particleBatches);
-  const addParticleBatch = useStore((s) => s.addParticleBatch);
-  const removeParticleBatch = useStore((s) => s.removeParticleBatch);
-  const updateParticleBatch = useStore((s) => s.updateParticleBatch);
-  const grants = useStore((s) => s.flatEnergyGrants);
-  const addFlatEnergyGrant = useStore((s) => s.addFlatEnergyGrant);
-  const removeFlatEnergyGrant = useStore((s) => s.removeFlatEnergyGrant);
-  const updateFlatEnergyGrant = useStore((s) => s.updateFlatEnergyGrant);
+  const units = useStore((s) => s.units); const buffs = useStore((s) => s.buffs);
+  const rotationDuration = useStore((s) => s.rotationDuration); const setRotationDuration = useStore((s) => s.setRotationDuration);
+  const settings = useStore((s) => s.energySettings); const setEnergySettings = useStore((s) => s.setEnergySettings);
+  const configs = useStore((s) => s.unitEnergyConfigs); const updateUnitEnergyConfig = useStore((s) => s.updateUnitEnergyConfig); const resetUnitEnergyConfig = useStore((s) => s.resetUnitEnergyConfig); const updateUnit = useStore((s) => s.updateUnit);
+  const batches = useStore((s) => s.particleBatches); const addParticleBatch = useStore((s) => s.addParticleBatch); const removeParticleBatch = useStore((s) => s.removeParticleBatch); const updateParticleBatch = useStore((s) => s.updateParticleBatch);
+  const grants = useStore((s) => s.flatEnergyGrants); const addFlatEnergyGrant = useStore((s) => s.addFlatEnergyGrant); const removeFlatEnergyGrant = useStore((s) => s.removeFlatEnergyGrant); const updateFlatEnergyGrant = useStore((s) => s.updateFlatEnergyGrant);
+  const plan = useMemo(() => computeTeamEnergyPlan(units, configs, settings, rotationDuration, batches, grants, buffs), [units, configs, settings, rotationDuration, batches, grants, buffs]);
+  const resultByUnit = useMemo(() => new Map(plan.units.map((result) => [result.unitId, result])), [plan.units]);
 
-  const results = useMemo(() => computeEnergyResults(units, batches, grants, buffs), [units, batches, grants, buffs]);
-  const resultByUnit = useMemo(() => new Map(results.map((r) => [r.unitId, r])), [results]);
+  useEffect(() => {
+    if (!settings.autoReserveERRolls) return;
+    for (const unit of units) {
+      const result = resultByUnit.get(unit.id);
+      if (result && unit.artifacts.distributed.er !== result.reservation.reservedRolls) updateUnit(unit.id, { artifacts: buildAutoReservedArtifacts(unit, result) });
+    }
+  }, [settings.autoReserveERRolls, units, resultByUnit, updateUnit]);
 
-  function unitLabel(id: string | null): string {
-    if (!id) return '-- unassigned --';
-    return units.find((u) => u.id === id)?.characterName ?? id.slice(0, 4);
-  }
-
-  return (
-    <section className="panel">
-      <h2>Energy / ER requirements</h2>
-      <p className="subtle">
-        Particle generation isn't reliably in genshin-db — enter it yourself from an online reference. Every
-        particle/orb feeds the whole team at once: pick who was on-field (the catcher) when it happened — everyone
-        else automatically gets the reduced off-field share ({' '}
-        {units.length <= 1 ? 'n/a (solo team)' : `${Math.round(getOffFieldMultiplier(units.length) * 100)}%`} value
-        for this team size), nobody gets zero.
-      </p>
-
-      <h3>Particle sources</h3>
-      {batches.map((batch) => (
-        <div key={batch.id} className="buff-card">
-          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
-            <span className="pill">Particle source</span>
-            <button className="danger" type="button" onClick={() => removeParticleBatch(batch.id)}>
-              remove
-            </button>
-          </div>
-
-          <div className="grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginBottom: 8 }}>
-            <div className="field">
-              <label>Produced by (Skill/Burst/etc. of)</label>
-              <select
-                value={batch.sourceUnitId ?? ''}
-                disabled={batch.isWhite}
-                onChange={(e) => updateParticleBatch(batch.id, { sourceUnitId: e.target.value || null })}
-              >
-                <option value="">-- unassigned --</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.characterName ?? u.id.slice(0, 4)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>&nbsp;</label>
-              <label className="checkbox-row">
-                <input
-                  type="checkbox"
-                  checked={batch.isWhite}
-                  onChange={(e) => updateParticleBatch(batch.id, { isWhite: e.target.checked })}
-                />
-                White/neutral particles (no element)
-              </label>
-            </div>
-          </div>
-
-          <div className="grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 4 }}>
-            <div className="field">
-              <label>Tier</label>
-              <select
-                value={batch.tier}
-                onChange={(e) => updateParticleBatch(batch.id, { tier: e.target.value as ParticleTier })}
-              >
-                {TIERS.map((t) => (
-                  <option key={t} value={t}>
-                    {PARTICLE_TIER_LABELS[t]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="field">
-              <label>Count (per rotation)</label>
-              <input
-                type="number"
-                min={0}
-                value={batch.count}
-                onChange={(e) => updateParticleBatch(batch.id, { count: Number(e.target.value) })}
-              />
-            </div>
-            <div className="field">
-              <label>On-field catcher</label>
-              <select
-                value={batch.catcherUnitId ?? ''}
-                onChange={(e) => updateParticleBatch(batch.id, { catcherUnitId: e.target.value || null })}
-              >
-                <option value="">-- none (everyone off-field) --</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.characterName ?? u.id.slice(0, 4)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <p className="subtle">
-            {unitLabel(batch.sourceUnitId)} {batch.isWhite ? '(white)' : ''} → {batch.count}×{' '}
-            {PARTICLE_TIER_LABELS[batch.tier].toLowerCase()}, caught on-field by {unitLabel(batch.catcherUnitId)} —
-            every other unit gets the off-field share automatically.
-          </p>
-        </div>
-      ))}
-      <button type="button" onClick={addParticleBatch}>
-        + Add particle source
-      </button>
-
-      <h3 style={{ marginTop: 14 }}>Flat energy refunds</h3>
-      <p className="subtle">For talents/constellations/weapons worded as "restores N Energy" — not scaled by ER%.</p>
-      {grants.map((grant) => (
-        <div key={grant.id} className="row" style={{ marginBottom: 6 }}>
-          <select
-            value={grant.unitId ?? ''}
-            onChange={(e) => updateFlatEnergyGrant(grant.id, { unitId: e.target.value || null })}
-          >
-            <option value="">-- unassigned --</option>
-            {units.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.characterName ?? u.id.slice(0, 4)}
-              </option>
-            ))}
-          </select>
-          <span className="subtle">amount</span>
-          <input
-            type="number"
-            min={0}
-            style={{ width: 80 }}
-            value={grant.amount}
-            onChange={(e) => updateFlatEnergyGrant(grant.id, { amount: Number(e.target.value) })}
-          />
-          <span className="subtle">× occurrences</span>
-          <input
-            type="number"
-            min={0}
-            style={{ width: 70 }}
-            value={grant.occurrences}
-            onChange={(e) => updateFlatEnergyGrant(grant.id, { occurrences: Number(e.target.value) })}
-          />
-          <button type="button" className="danger" onClick={() => removeFlatEnergyGrant(grant.id)}>
-            remove
-          </button>
-        </div>
-      ))}
-      <button type="button" onClick={addFlatEnergyGrant}>
-        + Add flat energy refund
-      </button>
-
-      <div className="table-scroll" style={{ marginTop: 14 }}>
-        <table className="dense">
-          <thead>
-            <tr>
-              <th>Unit</th>
-              <th>Current ER%</th>
-              <th>Burst cost</th>
-              <th>Raw particle energy</th>
-              <th>Flat energy</th>
-              <th>Energy received</th>
-              <th>Required ER%</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {units.map((u) => {
-              const r = resultByUnit.get(u.id);
-              if (!r) return null;
-              return (
-                <tr key={u.id}>
-                  <td>{u.characterName ?? 'unassigned'}</td>
-                  <td className="num">{fmt(r.currentER)}</td>
-                  <td className="num">{fmt(r.burstEnergyCost, 0)}</td>
-                  <td className="num">{fmt(r.rawEnergyPerRotation)}</td>
-                  <td className="num">{fmt(r.flatEnergyPerRotation)}</td>
-                  <td className="num">{fmt(r.energyReceived)}</td>
-                  <td className="num">{r.requiredER != null ? fmt(r.requiredER) : 'n/a (0 energy in)'}</td>
-                  <td style={{ color: r.ready ? 'var(--ok)' : 'var(--danger)', textAlign: 'left' }}>
-                    {r.ready ? 'Ready' : `Short by ${fmt(r.shortfall)}`}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </section>
-  );
+  return <section className="panel">
+    <h2>Energy setup / ER requirements</h2>
+    <p className="subtle">Spreadsheet-model energy planner (data v{ENERGY_DATA_VERSION}), intentionally separate from the damage-instance rotation. ER rolls are reserved automatically; unused artifact rolls remain unallocated.</p>
+    <h3>Team energy assumptions</h3>
+    <div className="grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 10 }}>
+      <div className="field"><label>Rotation length (seconds)</label><input type="number" min={1} value={rotationDuration} onChange={(e) => setRotationDuration(Math.max(1, Number(e.target.value)))} /></div>
+      <div className="field"><label>Particle RNG</label><select value={settings.rngMode} onChange={(e) => setEnergySettings({ rngMode: e.target.value as typeof settings.rngMode })}><option value="average">Average</option><option value="safe">Safe</option><option value="worst">Worst case</option></select></div>
+      <div className="field"><label>Enemy HP particles</label><select value={settings.enemyParticleMode} onChange={(e) => setEnergySettings({ enemyParticleMode: e.target.value as typeof settings.enemyParticleMode })}><option value="default">Default (9 clear)</option><option value="none">No particles</option><option value="custom">Custom</option></select></div>
+      <div className="field"><label>Clear time (seconds)</label><input type="number" min={1} value={settings.clearTimeSeconds} onChange={(e) => setEnergySettings({ clearTimeSeconds: Math.max(1, Number(e.target.value)) })} /></div>
+    </div>
+    {settings.enemyParticleMode === 'custom' && <div className="grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 10 }}>{(['Clear', ...ENERGY_ELEMENTS] as const).map((element) => <div className="field" key={element}><label>{element} particles / clear</label><input type="number" min={0} step={0.5} value={settings.customEnemyParticles[element]} onChange={(e) => setEnergySettings({ customEnemyParticles: { ...settings.customEnemyParticles, [element]: Math.max(0, Number(e.target.value)) } })} /></div>)}</div>}
+    <div className="row" style={{ marginBottom: 10 }}>
+      <div className="field"><label>Electro Resonance interval (seconds)</label><input type="number" min={5} step={0.5} value={settings.electroReactionIntervalSeconds} onChange={(e) => setEnergySettings({ electroReactionIntervalSeconds: Math.max(5, Number(e.target.value)) })} /></div>
+      <label className="checkbox-row"><input type="checkbox" checked={settings.autoReserveERRolls} onChange={(e) => setEnergySettings({ autoReserveERRolls: e.target.checked })} />Automatically reserve artifact ER rolls</label>
+    </div>
+    {plan.warnings.length > 0 && <div className="error-banner" style={{ marginBottom: 10 }}>{plan.warnings.map((warning) => <div key={warning}>{warning}</div>)}</div>}
+    <h3>Character energy rotation</h3>
+    {units.map((unit) => <EnergyUnitSetup key={unit.id} unit={unit} units={units} config={configs[unit.id] ?? createDefaultUnitEnergyConfig(unit.id)} result={resultByUnit.get(unit.id)} onChange={(patch) => updateUnitEnergyConfig(unit.id, patch)} onReset={() => resetUnitEnergyConfig(unit.id)} />)}
+    <h3>ER results and artifact reservation</h3>
+    <div className="table-scroll"><table className="dense"><thead><tr><th>Unit</th><th>Cost after discount</th><th>ER-scaled Energy @100%</th><th>Flat Energy</th><th>Required static ER%</th><th>Auto ER rolls</th><th>Attainable ER%</th><th>Status</th></tr></thead><tbody>
+      {units.map((unit) => { const result = resultByUnit.get(unit.id); if (!result) return null; return <tr key={unit.id}><td>{unit.characterName ?? 'unassigned'}</td><td className="num">{fmt(result.effectiveBurstCost, 0)}</td><td className="num">{fmt(result.erScaledEnergyAt100ER)}</td><td className="num">{fmt(result.flatEnergyPerBurst)}</td><td className="num">{result.requiredER == null ? 'n/a' : fmt(result.requiredER)}</td><td className="num">{result.reservation.reservedRolls} / {result.reservation.desiredRolls}</td><td className="num">{fmt(result.attainedStaticER)}</td><td style={{ color: result.ready && result.reservation.erShortfall <= 0 ? 'var(--ok)' : 'var(--danger)' }}>{result.requiredER == null ? 'No ER-scaled energy' : result.reservation.erShortfall > 0 ? `ER short ${fmt(result.reservation.erShortfall)} pp; Energy short ${fmt(result.energyShortfall)}` : result.ready ? 'Ready' : `Energy short ${fmt(result.energyShortfall)}`}</td></tr>; })}
+    </tbody></table></div>
+    <p className="subtle">ER-dependent source effects such as Raiden's Burst refund use resolved ER after reservation. Solver: {plan.converged ? `converged in ${plan.iterations} pass(es).` : 'convergence warning.'}</p>
+    <ManualEnergySources units={units} batches={batches} grants={grants} addParticleBatch={addParticleBatch} removeParticleBatch={removeParticleBatch} updateParticleBatch={updateParticleBatch} addFlatEnergyGrant={addFlatEnergyGrant} removeFlatEnergyGrant={removeFlatEnergyGrant} updateFlatEnergyGrant={updateFlatEnergyGrant} />
+  </section>;
 }
