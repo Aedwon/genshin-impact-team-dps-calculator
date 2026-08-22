@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, energy-recharge-v2]
 
 jobs:
   build-and-lint:
