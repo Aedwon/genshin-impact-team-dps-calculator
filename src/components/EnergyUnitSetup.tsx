@@ -30,12 +30,14 @@ function SkillInputs({
   skill,
   variants,
   fallbackLabel,
+  optional = false,
   onChange,
 }: {
   label: string;
   skill: EnergySkillConfig;
   variants: { label: string }[];
   fallbackLabel: string;
+  optional?: boolean;
   onChange: (next: EnergySkillConfig) => void;
 }) {
   return (
@@ -49,6 +51,7 @@ function SkillInputs({
           onChange={(e) => onChange({ ...skill, variantLabel: e.target.value || null })}
         >
           {!variants.length && <option value="">No data</option>}
+          {optional && variants.length > 0 && <option value="">Choose a version</option>}
           {variants.map((variant) => <option key={variant.label} value={variant.label}>{variant.label}</option>)}
         </select>
       </div>
@@ -185,7 +188,7 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
         <div className="energy-core-settings">
           <div className="energy-core-copy">
             <strong>Rotation</strong>
-            <span>How this character generates particles and how often they Burst.</span>
+            <span>Set the skill uses, field time, and Burst cadence that actually happen in your rotation.</span>
           </div>
           <div className="energy-core-controls">
             <SkillInputs
@@ -231,12 +234,13 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
         <details className="energy-inline-disclosure">
           <summary>Secondary particle source <span>{secondaryActive ? `${cfg.secondary.usesPerRotation} use(s)` : 'Off'}</span></summary>
           <div className="energy-inline-disclosure-body">
-            <p className="subtle">Use this for a second skill variant or an additional particle-producing action in the same rotation.</p>
+            <p className="subtle">Use this only when the character generates particles from a second skill version or additional action.</p>
             <SkillInputs
               label="Secondary"
               skill={cfg.secondary}
               variants={variants}
               fallbackLabel=""
+              optional
               onChange={(secondary) => onChange({ secondary })}
             />
           </div>
@@ -268,7 +272,7 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
         <details className="energy-inline-disclosure">
           <summary>Favonius <span>{favoniusActive ? `${cfg.favoniusTriggersPerRotation} trigger(s)` : 'Off'}</span></summary>
           <div className="energy-inline-disclosure-body">
-            <p className="subtle">Enter expected Favonius passive triggers per rotation. Leave at 0 when this character is not using a Favonius weapon.</p>
+            <p className="subtle">Enter expected Favonius passive triggers per rotation. Leave this at 0 when the character is not using a Favonius weapon.</p>
             <div className="energy-favonius-row">
               <div className="field">
                 <label>Triggers per rotation</label>
@@ -307,7 +311,7 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
             <div className="energy-inline-disclosure-body">
               <div className="energy-explanation-grid">
                 <div>
-                  <strong>Need</strong>
+                  <strong>Energy needed</strong>
                   <dl className="energy-breakdown-list">
                     <div><dt>Burst cost</dt><dd>{result.burstEnergyCost.toFixed(0)}</dd></div>
                     {result.burstCostDiscount > 0 && <div><dt>Cost discount</dt><dd>−{result.burstCostDiscount.toFixed(1)}</dd></div>}
@@ -315,7 +319,7 @@ export function EnergyUnitSetup({ unit, units, config: cfg, result, onChange, on
                   </dl>
                 </div>
                 <div>
-                  <strong>Particle / ER-scaled Energy at 100% ER</strong>
+                  <strong>Particle Energy at 100% ER</strong>
                   <dl className="energy-breakdown-list">
                     {result.particleBreakdown.map((source) => (
                       <div key={source.id}><dt>{source.label}</dt><dd>{source.energyAt100ER.toFixed(1)}</dd></div>
