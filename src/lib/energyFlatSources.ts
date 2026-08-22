@@ -1,7 +1,8 @@
-import { getCharacterEnergyData, getEnergyVariant, type CharacterEnergyData } from '../data/energyData';
+import { getCharacterEnergyData, type CharacterEnergyData } from '../data/energyData';
 import type { UnitEnergyConfig } from '../energyTypes';
 import type { FlatEnergyGrant, Unit } from '../types';
 import { configFor, nonNegative, skillValue, spreadsheetName, type FlatRateSource } from './energyInternals';
+import { getEnergyVariant } from './energyVariants';
 
 export function automaticSkillFlatRates(
   units: Unit[], configs: Record<string, UnitEnergyConfig>, rotationDuration: number
