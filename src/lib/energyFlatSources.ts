@@ -101,6 +101,20 @@ export function characterFlatRateSources(
       });
     }
 
+    if (name === 'Kazuha' && unit.constellation >= 4) {
+      for (const [slot, skill] of [['primary', cfg.primary], ['secondary', cfg.secondary]] as const) {
+        if (skill.usesPerRotation <= 0) continue;
+        const variant = getEnergyVariant(getCharacterEnergyData(unit.characterName), skill.variantLabel, unit.constellation);
+        const energyPerUse = variant?.label === 'Hold' ? 4 : variant?.label === 'Press' ? 3 : 0;
+        if (energyPerUse > 0) out.push({
+          id: `character:kazuha-c4:${unit.id}:${slot}`,
+          label: `Kazuha C4 ${variant?.label ?? slot}`,
+          targetUnitId: unit.id,
+          ratePerSecond: energyPerUse * skill.usesPerRotation / rotationDuration,
+        });
+      }
+    }
+
     if (name === 'Arlecchino' && unit.constellation >= 4) out.push({
       id: `character:arlecchino-c4:${unit.id}`, label: 'Arlecchino C4', targetUnitId: unit.id, ratePerSecond: 15 / burstInterval,
     });
