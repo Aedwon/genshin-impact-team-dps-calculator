@@ -23,14 +23,21 @@ export function UnitCard({ unit, canRemove }: Props) {
   const burstCostSuggestion = unit.characterName ? getBurstEnergyCostSuggestion(unit.characterName) : null;
 
   // Backfill burstEnergyCost for units saved before this field existed (or
-  // any other path that left it unset) — the display fallback below is
-  // cosmetic only, this is what makes the stored value real everywhere else
-  // (e.g. the Energy panel's calculations) reads it.
+  // any other path that left it unset). Character selection below also sets
+  // the suggested cost immediately; users can still edit it afterward.
   useEffect(() => {
     if (unit.burstEnergyCost == null && burstCostSuggestion != null) {
       updateUnit(unit.id, { burstEnergyCost: burstCostSuggestion });
     }
   }, [unit.id, unit.burstEnergyCost, burstCostSuggestion, updateUnit]);
+
+  function selectCharacter(characterName: string | null) {
+    const suggestedCost = characterName ? getBurstEnergyCostSuggestion(characterName) : null;
+    updateUnit(unit.id, {
+      characterName,
+      ...(suggestedCost != null ? { burstEnergyCost: suggestedCost } : {}),
+    });
+  }
 
   return (
     <div className="unit-card">
@@ -49,7 +56,7 @@ export function UnitCard({ unit, canRemove }: Props) {
           <SearchableSelect
             id={`char-${unit.id}`}
             value={unit.characterName}
-            onChange={(v) => updateUnit(unit.id, { characterName: v })}
+            onChange={selectCharacter}
             options={characterNames}
             placeholder="Search character..."
           />
@@ -68,7 +75,7 @@ export function UnitCard({ unit, canRemove }: Props) {
               type="number"
               min={1}
               max={5}
-              title="Refinement (doesn't feed the damage calc — weapon passives are manual buffs; tracked for reference/export)"
+              title="Refinement (selected energy passives feed the Energy planner; other weapon passives remain manual buffs for damage)"
               style={{ width: 42, flex: '0 0 42px' }}
               value={unit.weaponRefinement ?? 1}
               onChange={(e) => updateUnit(unit.id, { weaponRefinement: Number(e.target.value) })}
