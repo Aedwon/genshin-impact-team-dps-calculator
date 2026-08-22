@@ -12,6 +12,8 @@ export interface ERReservationResult {
   baseERWithoutDistributedRolls: number;
   attainableER: number;
   erShortfall: number;
+  /** Existing non-ER allocations that must be manually removed to fit the reserved ER rolls. */
+  budgetConflictRolls: number;
 }
 
 function baseERWithoutDistributedRolls(unit: Unit, buffs: Buff[]): number {
@@ -26,8 +28,8 @@ export function reservationFor(unit: Unit, buffs: Buff[], requiredER: number | n
   const baseER = baseERWithoutDistributedRolls(unit, buffs);
   const erPerRoll = SUBSTAT_ROLL_VALUES.er * raritySubstatScalar(unit.artifacts);
   const otherRolls = totalDistributed(unit.artifacts) - nonNegative(unit.artifacts.distributed.er);
-  const budgetRemaining = Math.max(0, distributedRollBudget(unit.artifacts) - otherRolls);
-  const maxAvailableRolls = Math.max(0, Math.min(perSubstatCap(unit.artifacts, 'er'), budgetRemaining));
+  const budget = distributedRollBudget(unit.artifacts);
+  const maxAvailableRolls = Math.max(0, perSubstatCap(unit.artifacts, 'er'));
   const desiredRolls = requiredER == null || requiredER <= baseER || erPerRoll <= 0
     ? 0
     : Math.max(0, Math.ceil((requiredER - baseER - 1e-9) / erPerRoll));
@@ -43,5 +45,6 @@ export function reservationFor(unit: Unit, buffs: Buff[], requiredER: number | n
     baseERWithoutDistributedRolls: baseER,
     attainableER,
     erShortfall: requiredER == null ? 0 : Math.max(0, requiredER - attainableER),
+    budgetConflictRolls: Math.max(0, otherRolls + reservedRolls - budget),
   };
 }
