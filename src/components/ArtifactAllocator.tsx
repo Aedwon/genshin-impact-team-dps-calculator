@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { distributedRollBudget, perSubstatCap, totalDistributed } from '../lib/artifacts';
 import { getArtifactSet, listArtifactSetNames } from '../lib/genshinData';
+import { useStore } from '../store';
 import {
   SUBSTAT_LABELS,
   SUBSTAT_TYPES,
@@ -35,6 +36,7 @@ const CIRCLET_OPTIONS: { value: CircletMain; label: string }[] = [
 ];
 
 export function ArtifactAllocator({ artifacts, wielderElement, onChange }: Props) {
+  const autoReserveER = useStore((s) => s.energySettings.autoReserveERRolls);
   const budget = distributedRollBudget(artifacts);
   const total = totalDistributed(artifacts);
   const remaining = budget - total;
@@ -43,7 +45,7 @@ export function ArtifactAllocator({ artifacts, wielderElement, onChange }: Props
   const setInfo = useMemo(() => (artifacts.setName ? getArtifactSet(artifacts.setName) : null), [artifacts.setName]);
 
   function setDistributed(type: (typeof SUBSTAT_TYPES)[number], next: number) {
-    if (type === 'er') return;
+    if (type === 'er' && autoReserveER) return;
     const cap = perSubstatCap(artifacts, type);
     const current = artifacts.distributed[type];
     const wouldBeTotal = total - current + next;
@@ -69,14 +71,14 @@ export function ArtifactAllocator({ artifacts, wielderElement, onChange }: Props
         {valid ? <span className="pill" style={{ color: 'var(--ok)' }}>valid</span> : null}
       </div>
       {!valid && <div className="error-banner">
-        {remaining < 0 && <div>Distributed rolls exceed the budget by {-remaining}.</div>}
+        {remaining < 0 && <div>Distributed rolls exceed the budget by {-remaining}. Remove that many manually assigned non-ER rolls if ER is auto-reserved.</div>}
         {overCapTypes.map((type) => <div key={type}>{SUBSTAT_LABELS[type]} exceeds its cap of {perSubstatCap(artifacts, type)} distributed rolls.</div>)}
       </div>}
-      <p className="subtle" style={{ marginBottom: 8 }}>ER distributed rolls are reserved automatically by the Energy planner. Remaining rolls intentionally stay unallocated until you assign them to other stats.</p>
+      <p className="subtle" style={{ marginBottom: 8 }}>{autoReserveER ? 'ER distributed rolls are reserved automatically by the Energy planner. Remaining rolls intentionally stay unallocated until you assign them to other stats.' : 'Automatic ER reservation is disabled; ER distributed rolls can be assigned manually like other stats.'}</p>
       <div className="table-scroll" style={{ marginBottom: 8 }}>
         <table className="dense"><thead><tr><th>Substat</th><th>Fixed</th><th>Distributed</th><th>Cap</th><th>Total rolls</th></tr></thead>
           <tbody>{SUBSTAT_TYPES.map((type) => {
-            const cap = perSubstatCap(artifacts, type); const dist = artifacts.distributed[type]; const isAutoER = type === 'er';
+            const cap = perSubstatCap(artifacts, type); const dist = artifacts.distributed[type]; const isAutoER = type === 'er' && autoReserveER;
             return <tr key={type}>
               <td>{SUBSTAT_LABELS[type]} {isAutoER ? <span className="pill">auto</span> : null}</td><td className="num">2</td>
               <td>{isAutoER ? <span className="count">{dist} reserved</span> : <div className="stepper"><button type="button" onClick={() => setDistributed(type, dist - 1)} disabled={dist <= 0}>-</button><span className="count">{dist}</span><button type="button" onClick={() => setDistributed(type, dist + 1)} disabled={dist >= cap || total >= budget}>+</button></div>}</td>
