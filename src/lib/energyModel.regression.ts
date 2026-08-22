@@ -1,6 +1,7 @@
 import { getCharacterEnergyData } from '../data/energyData';
 import { createDefaultEnergySettings, createDefaultUnitEnergyConfig } from '../energyTypes';
 import { createUnit } from '../types';
+import { reservationFor } from './energyArtifacts';
 import { computeTeamEnergyPlan } from './energyModel';
 import { getDefaultEnergyVariant } from './energyVariants';
 
@@ -48,4 +49,21 @@ export function assertEnergyVariantSelectionRegression(): void {
 
   const fischl = getDefaultEnergyVariant(getCharacterEnergyData('Fischl'), 6)?.label;
   if (fischl !== 'Constellation 6') throw new Error(`Fischl C6 should use its replacement variant, got ${fischl}`);
+}
+
+/** Required ER has priority; existing non-ER rolls remain untouched and become an explicit conflict. */
+export function assertERReservationPriorityRegression(): void {
+  const unit = createUnit('er-reservation-regression');
+  unit.artifacts.distributed.atkPercent = 8;
+  unit.artifacts.distributed.critDMG = 10;
+  const reservation = reservationFor(unit, [], 150, true);
+  if (reservation.reservedRolls !== 8) {
+    throw new Error(`Expected 8 reserved ER rolls for 150% ER, got ${reservation.reservedRolls}`);
+  }
+  if (reservation.budgetConflictRolls !== 6) {
+    throw new Error(`Expected a 6-roll manual allocation conflict, got ${reservation.budgetConflictRolls}`);
+  }
+  if (reservation.erShortfall > 1e-9) {
+    throw new Error(`ER should be attainable before resolving the non-ER budget conflict; shortfall ${reservation.erShortfall}`);
+  }
 }
