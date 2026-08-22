@@ -46,7 +46,20 @@ export function EnergyPanel() {
     {units.map((unit) => <EnergyUnitSetup key={unit.id} unit={unit} units={units} config={configs[unit.id] ?? createDefaultUnitEnergyConfig(unit.id)} result={resultByUnit.get(unit.id)} onChange={(patch) => updateUnitEnergyConfig(unit.id, patch)} onReset={() => resetUnitEnergyConfig(unit.id)} />)}
     <h3>ER results and artifact reservation</h3>
     <div className="table-scroll"><table className="dense"><thead><tr><th>Unit</th><th>Cost after discount</th><th>ER-scaled Energy @100%</th><th>Flat Energy</th><th>Required static ER%</th><th>Auto ER rolls</th><th>Attainable ER%</th><th>Status</th></tr></thead><tbody>
-      {units.map((unit) => { const result = resultByUnit.get(unit.id); if (!result) return null; return <tr key={unit.id}><td>{unit.characterName ?? 'unassigned'}</td><td className="num">{fmt(result.effectiveBurstCost, 0)}</td><td className="num">{fmt(result.erScaledEnergyAt100ER)}</td><td className="num">{fmt(result.flatEnergyPerBurst)}</td><td className="num">{result.requiredER == null ? 'n/a' : fmt(result.requiredER)}</td><td className="num">{result.reservation.reservedRolls} / {result.reservation.desiredRolls}</td><td className="num">{fmt(result.attainedStaticER)}</td><td style={{ color: result.ready && result.reservation.erShortfall <= 0 ? 'var(--ok)' : 'var(--danger)' }}>{result.requiredER == null ? 'No ER-scaled energy' : result.reservation.erShortfall > 0 ? `ER short ${fmt(result.reservation.erShortfall)} pp; Energy short ${fmt(result.energyShortfall)}` : result.ready ? 'Ready' : `Energy short ${fmt(result.energyShortfall)}`}</td></tr>; })}
+      {units.map((unit) => {
+        const result = resultByUnit.get(unit.id);
+        if (!result) return null;
+        const reservation = result.reservation;
+        const status = result.requiredER == null
+          ? 'No ER-scaled energy'
+          : reservation.erShortfall > 0
+            ? `ER short ${fmt(reservation.erShortfall)} pp; Energy short ${fmt(result.energyShortfall)}`
+            : reservation.budgetConflictRolls > 0
+              ? `Remove ${reservation.budgetConflictRolls} non-ER roll(s) to fit reserved ER`
+              : result.ready ? 'Ready' : `Energy short ${fmt(result.energyShortfall)}`;
+        const valid = result.requiredER != null && reservation.erShortfall <= 0 && reservation.budgetConflictRolls <= 0 && result.ready;
+        return <tr key={unit.id}><td>{unit.characterName ?? 'unassigned'}</td><td className="num">{fmt(result.effectiveBurstCost, 0)}</td><td className="num">{fmt(result.erScaledEnergyAt100ER)}</td><td className="num">{fmt(result.flatEnergyPerBurst)}</td><td className="num">{result.requiredER == null ? 'n/a' : fmt(result.requiredER)}</td><td className="num">{reservation.reservedRolls} / {reservation.desiredRolls}</td><td className="num">{fmt(result.attainedStaticER)}</td><td style={{ color: valid ? 'var(--ok)' : 'var(--danger)' }}>{status}</td></tr>;
+      })}
     </tbody></table></div>
     <p className="subtle">ER-dependent source effects such as Raiden's Burst refund use resolved ER after reservation. Solver: {plan.converged ? `converged in ${plan.iterations} pass(es).` : 'convergence warning.'}</p>
     <ManualEnergySources units={units} batches={batches} grants={grants} addParticleBatch={addParticleBatch} removeParticleBatch={removeParticleBatch} updateParticleBatch={updateParticleBatch} addFlatEnergyGrant={addFlatEnergyGrant} removeFlatEnergyGrant={removeFlatEnergyGrant} updateFlatEnergyGrant={updateFlatEnergyGrant} />
