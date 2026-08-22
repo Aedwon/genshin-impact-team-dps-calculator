@@ -1,4 +1,4 @@
-import { getCharacterEnergyData, getEnergyVariant, type EnergySkillVariantData } from '../data/energyData';
+import { getCharacterEnergyData, type EnergySkillVariantData } from '../data/energyData';
 import type { EnergySettings, EnergySkillConfig, UnitEnergyConfig } from '../energyTypes';
 import type { Element, ParticleBatch, Unit } from '../types';
 import {
@@ -11,6 +11,7 @@ import {
   spreadsheetName,
   type ParticleRateSource,
 } from './energyInternals';
+import { getEnergyVariant } from './energyVariants';
 
 const RNG_MULTIPLIER = { average: 0, safe: 0.5, worst: 1 } as const;
 
